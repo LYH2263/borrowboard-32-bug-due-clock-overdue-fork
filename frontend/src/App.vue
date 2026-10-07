@@ -19,12 +19,10 @@
 import { ref, onMounted, provide } from 'vue'
 import { api } from './api'
 const counts = ref({})
-const clockFork = ref(false)
 const board = ref({ available: [], active: [], overdue: [] })
 async function load() {
   board.value = await api('/board')
   counts.value = board.value.counts || {}
-  clockFork.value = (board.value.overdue || []).some(x => x.board_clock === 'date_only')
 }
 provide('board', board)
 provide('reloadBoard', load)

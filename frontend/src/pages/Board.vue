@@ -45,8 +45,11 @@ async function lend(id) {
   } catch (e) { alert('借出失败：' + e.message) }
 }
 async function ret(id) {
-  await api('/loans/' + id + '/return', { method: 'POST', body: '{}' })
-  await reload()
+  // 叠单/连点时后一单会被后端拒掉：无论成败都以服务端为准重刷分栏与顶细条
+  try {
+    await api('/loans/' + id + '/return', { method: 'POST', body: '{}' })
+  } catch (e) { alert('归还失败：' + e.message) }
+  finally { await reload() }
 }
 function open(id) { router.push('/loans/' + id) }
 </script>

@@ -31,25 +31,32 @@
   </div>
 </template>
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, inject, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 const route = useRoute()
 const router = useRouter()
+const reloadBoard = inject('reloadBoard')
 const loan = ref(null)
 const days = ref(1)
 const time_policy = ref('follow_day')
 async function load() { loan.value = await api('/loans/' + route.params.id) }
+async function syncAll() { await load(); await reloadBoard() }
 async function extend() {
-  await api('/loans/' + route.params.id + '/extend', {
-    method: 'POST', body: JSON.stringify({ days: Number(days.value) || 0, time_policy: time_policy.value }),
-  })
-  await load()
+  // 顺延改的是日期+钟点一整对；失败时详情与顶细条都停在点前，成功则一起换新
+  try {
+    await api('/loans/' + route.params.id + '/extend', {
+      method: 'POST', body: JSON.stringify({ days: Number(days.value) || 0, time_policy: time_policy.value }),
+    })
+  } catch (e) { alert('顺延失败：' + e.message) }
+  finally { await syncAll() }
 }
 async function ret() {
-  const r = await api('/loans/' + route.params.id + '/return', { method: 'POST', body: '{}' })
-  await load()
-  alert(r.overdue ? '该笔按逾期归还' : '该笔未逾期')
+  try {
+    const r = await api('/loans/' + route.params.id + '/return', { method: 'POST', body: '{}' })
+    alert(r.overdue ? '该笔按逾期归还' : '该笔未逾期')
+  } catch (e) { alert('归还失败：' + e.message) }
+  finally { await syncAll() }
 }
 onMounted(load)
 </script>

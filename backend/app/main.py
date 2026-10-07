@@ -52,8 +52,8 @@ def board():
     grace = _grace_days(c)
     c.close()
     today, now_time = _now()
-    cls = bc.classify_board(loans, today, grace, classify_loans)
-    cls["overdue"] = bc.board_overdue_rows(cls["overdue"])
+    # 与借还记录、详情、归还结论同一个分类出口：钟点不能在看板这路丢掉
+    cls = bc.classify_board(loans, today, now_time, grace, classify_loans)
     return {
         "available": available,
         "active": cls["active"],
@@ -181,7 +181,6 @@ def loan_detail(lid: int):
     d = dict(loan)
     today, now_time = _now()
     d["overdue"] = bc.detail_overdue(d, today, now_time, grace, is_overdue)
-    d["board_clock"] = "with_time"
     d["grace_days"] = grace
     return d
 

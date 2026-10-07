@@ -21,11 +21,13 @@ async function load() {
   grace.value = Number(settings.grace_days || 0)
 }
 async function save() {
-  await api('/settings/grace_days', {
-    method: 'PUT', body: JSON.stringify({ days: Number(grace.value) || 0 }),
-  })
-  await load()
-  await reloadBoard()
+  // 成败都以服务端为准回拉：保存失败时设置与分栏一起停在改前，不各吃一半
+  try {
+    await api('/settings/grace_days', {
+      method: 'PUT', body: JSON.stringify({ days: Number(grace.value) || 0 }),
+    })
+  } catch (e) { alert('保存宽限失败：' + e.message) }
+  finally { await load(); await reloadBoard() }
 }
 onMounted(load)
 </script>
