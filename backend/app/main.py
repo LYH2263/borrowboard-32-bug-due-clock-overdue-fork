@@ -52,8 +52,8 @@ def board():
     grace = _grace_days(c)
     c.close()
     today, now_time = _now()
-    cls = bc.classify_board(loans, today, grace, classify_loans)
-    cls["overdue"] = bc.board_overdue_rows(cls["overdue"])
+    # 看板分栏与借还记录/顶细条同一出口，当前钟点原样参与是否逾期
+    cls = bc.classify_board(loans, today, now_time, grace, classify_loans)
     return {
         "available": available,
         "active": cls["active"],
@@ -123,10 +123,15 @@ def return_loan(lid: int):
     if loan["status"] != "active":
         c.close(); raise HTTPException(400, "not_active")
     today, now_time = _now()
-    # 与分栏、逾期扫名单、顶细条同一个判定出口
+    # 与分栏、逾期扫名单、顶细条同一个判定出口；须在状态翻转前取结论
     overdue = bc.detail_overdue(dict(loan), today, now_time, _grace_days(c), is_overdue)
-    c.execute("UPDATE loans SET status='returned', returned_at=? WHERE id=?",
-              (datetime.now(timezone.utc).isoformat(), lid))
+    returned_at = datetime.now(timezone.utc).isoformat()
+    # 条件更新兜底叠单：并发第二笔影响 0 行，整单失败，物品状态也不许被二次翻动
+    cur = c.execute(
+        "UPDATE loans SET status='returned', returned_at=? WHERE id=? AND status='active'",
+        (returned_at, lid))
+    if cur.rowcount != 1:
+        c.rollback(); c.close(); raise HTTPException(400, "not_active")
     c.execute("UPDATE items SET status='available' WHERE id=?", (loan["item_id"],))
     c.commit(); c.close()
     return {"ok": True, "overdue": overdue}
@@ -150,8 +155,14 @@ def extend_loan(lid: int, body: ExtendIn):
                                              body.days, body.time_policy)
     except ValueError as e:
         c.close(); raise HTTPException(422, str(e))
-    c.execute("UPDATE loans SET due_date=?, due_time=? WHERE id=?",
-              (new_date, new_time, lid))
+    # 日期与钟点在同一条 UPDATE 里落库，杜绝只改日期、时分口径分裂；
+    # WHERE 带上旧日期/旧钟点做乐观条件，叠单的第二笔 0 行、整单失败，不覆盖已顺延结果
+    cur = c.execute(
+        "UPDATE loans SET due_date=?, due_time=? "
+        "WHERE id=? AND status='active' AND due_date=? AND due_time IS ?",
+        (new_date, new_time, lid, loan["due_date"], loan["due_time"]))
+    if cur.rowcount != 1:
+        c.rollback(); c.close(); raise HTTPException(409, "loan_changed")
     c.commit(); c.close()
     return {"id": lid, "due_date": new_date, "due_time": new_time,
             "time_policy": body.time_policy}
@@ -181,7 +192,6 @@ def loan_detail(lid: int):
     d = dict(loan)
     today, now_time = _now()
     d["overdue"] = bc.detail_overdue(d, today, now_time, grace, is_overdue)
-    d["board_clock"] = "with_time"
     d["grace_days"] = grace
     return d
 

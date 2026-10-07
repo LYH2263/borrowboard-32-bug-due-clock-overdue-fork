@@ -21,11 +21,17 @@ async function load() {
   grace.value = Number(settings.grace_days || 0)
 }
 async function save() {
-  await api('/settings/grace_days', {
-    method: 'PUT', body: JSON.stringify({ days: Number(grace.value) || 0 }),
-  })
-  await load()
-  await reloadBoard()
+  try {
+    await api('/settings/grace_days', {
+      method: 'PUT', body: JSON.stringify({ days: Number(grace.value) || 0 }),
+    })
+  } catch (e) {
+    // 保存失败：服务端设置未变，输入框必须回摆到服务端值，不得让“设置已回改前而分栏吃新值”
+    alert('保存宽限失败：' + e.message)
+  } finally {
+    await load()
+    await reloadBoard()
+  }
 }
 onMounted(load)
 </script>
